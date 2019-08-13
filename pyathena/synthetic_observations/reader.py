@@ -1,7 +1,8 @@
 import pyathena as pa
 import glob
+import numpy as np
 
-def reader(fname,vel=True,mhd=True):
+def data_reader(fname,vel=True,mhd=True):
     coolftn=pa.coolftn()
     dir, id, step, ext, mpi = pa.parse_filename(fname)
     ds=pa.AthenaDataSet(fname)
@@ -68,17 +69,42 @@ def setup_domain(fname,vel=True,mhd=True,shear=True):
     return ds,domain
 
 
-def read_data(ds,field,domain):
+def read_data(ds,field,domain,vy0_subtract=True):
 
     if field is 'temperature':
         coolftn=pa.coolftn()
         data=coolftn.get_temp(ds.read_all_data('T1'))
     elif field is 'velocity2':
-        r3d,x3d,y3d,z3d=pa.pos3d(domain)
-        vy0=-domain['qshear']*domain['Omega']*x3d
         data = ds.read_all_data(field)
-        data -= vy0
+        if vy0_subtract:
+            r3d,x3d,y3d,z3d=pa.pos3d(domain)
+            vy0=-domain['qshear']*domain['Omega']*x3d
+            data -= vy0
     else:
         data = ds.read_all_data(field)
     
     return data
+
+def select_phase(temperature,density,phase='warm'):
+
+    T1=5050.
+    T2=2.e4
+    dmax=50
+    if phase is 'whole': 
+        return density
+    elif phase is 'warm':
+        idx = (temperature < T1) | (temperature > T2)
+    elif phase is 'cold': 
+        idx = (temperature >= T1) 
+    elif phase is '2p': 
+        idx = (temperature > T2) 
+    elif phase is 'lowd': 
+        idx = (temperature > T2) | (density > dmax)
+    else:
+        print("{} is not supported".format(phase))
+        return -1
+    
+    dnew = np.copy(density)
+    dnew[idx] = 0.0
+
+    return dnew

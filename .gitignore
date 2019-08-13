@@ -1,7 +1,9 @@
 *.pyc
 notebook/.ipynb_checkpoints/
+notebook/working
 pyathena/build
 pyathena/pyathena
+pyathena/tables/GF12/data
 build
 *.c
 *.so

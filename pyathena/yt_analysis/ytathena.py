@@ -18,6 +18,9 @@ def _ndensity(field, data):
 def _ram_pok_z(field,data):
         return data["gas","density"]*data["gas","velocity_z"]**2/kboltz
 
+def _turb_pok(field,data):
+        return data["gas","density"]*data["gas","velocity_magnitude"]**2/kboltz
+
 # thermodynamics quantities
 def _pok(field, data):
         return data["gas","pressure"]/kboltz
@@ -53,6 +56,9 @@ def _mag_pok(field,data):
         return data["gas","magnetic_pressure"]/kboltz
 
 # metals
+def _metallicity(field,data):
+        return data["athena","specific_scalar[0]"]
+
 def _metal(field,data):
         return data["athena","specific_scalar[0]"]*data["gas","density"]
 
@@ -62,14 +68,28 @@ def _metal_cl(field,data):
 def _metal_run(field,data):
         return data["athena","specific_scalar[2]"]*data["gas","density"]
 
+def _radius(field, data):
+    return np.sqrt(data['x']**2+data['y']**2+data['z']**2)
+
+def _velocity_r(field, data):
+    return data['velocity_x']*data['x']/data['radius']+\
+           data['velocity_y']*data['y']/data['radius']+\
+           data['velocity_z']*data['z']/data['radius']
+
+def _momentum_r(field, data):
+    return data["cell_mass"]*data["velocity_r"]
+
+def _total_kinetic_energy(field, data):
+    return 0.5*data["cell_mass"]*data["velocity_magnitude"]**2
+
+def _total_magnetic_energy(field, data):
+    return data["magnetic_field_magnitude"]**2*data["cell_volume"]/8.0/np.pi
+
 unit_base={"length_unit": (1.0,"pc"), 
            "time_unit": (1.0,"s*pc/km"), 
            "mass_unit": (2.38858753789e-24,"g/cm**3*pc**3"), 
            "velocity_unit": (1.0,"km/s"),
            "magnetic_unit": (5.4786746797e-07,"gauss")}
-
-import matplotlib.pyplot as plt
-from .shiftedColorMap import *
 
 def get_scalars(ds):
     scal_fields=[]
@@ -82,141 +102,72 @@ def get_scalars(ds):
 
 
 def add_yt_fields(ds,cooling=True,mhd=True,rotation=True):
-    ds.add_field(("gas","nH"),function=_ndensity, \
+    ds.add_field(("gas","nH"),function=_ndensity,sampling_type='cell', \
       units='cm**(-3)',display_name=r'$n_{\rm H}$')
-    ds.add_field(("gas","ram_pok_z"),function=_ram_pok_z, \
+    ds.add_field(("gas","ram_pok_z"),function=_ram_pok_z,sampling_type='cell', \
+      units='K*cm**(-3)',display_name=r'$P_{\rm turb,z}/k_{\rm B}$')
+    ds.add_field(("gas","turb_pok"),function=_turb_pok,sampling_type='cell', \
       units='K*cm**(-3)',display_name=r'$P_{\rm turb}/k_{\rm B}$')
+    ds.add_field(("gas","radius"), function=_radius, \
+      sampling_type='cell',units='pc', \
+      display_name=r'$r$',force_override=True)
+    ds.add_field(("gas","total_kinetic_energy"), function=_total_kinetic_energy, \
+      sampling_type='cell',units='erg', \
+      display_name=r'$E_{\rm kin}$',force_override=True)
+    ds.add_field(("gas","velocity_r"), function=_velocity_r, \
+      sampling_type='cell',units='km/s', display_name=r'$v_r$')
+    ds.add_field(("gas","momentum_r"), function=_momentum_r, \
+      sampling_type='cell',units='Msun*km/s', display_name=r'$p_r$')
     if cooling:
-        ds.add_field(("gas","pok"),function=_pok, \
+        ds.add_field(("gas","pok"),function=_pok,sampling_type='cell', \
           units='K*cm**(-3)',display_name=r'$P/k_{\rm B}$')
-        ds.add_field(("gas","cs"),function=_cs, \
+        ds.add_field(("gas","cs"),function=_cs,sampling_type='cell', \
           units='km*s**(-1)',display_name=r'$c_s$')
-        ds.add_field(("gas","T1"),function=_T1, \
+        ds.add_field(("gas","T1"),function=_T1,sampling_type='cell', \
           units='K',display_name=r'$T_1$')
-        ds.add_field(("gas","mu"),function=_mu, \
+        ds.add_field(("gas","mu"),function=_mu,sampling_type='cell', \
           units='',display_name=r'$\mu$',force_override=True)
-        ds.add_field(("gas","temperature"),function=_temperature, \
+        ds.add_field(("gas","temperature"),function=_temperature,sampling_type='cell', \
           units='K',display_name=r'$T$',force_override=True)
     if rotation:
-        ds.add_field(("gas","dvelocity_y"),function=_dvelocity, \
+        ds.add_field(("gas","dvelocity_y"),function=_dvelocity,sampling_type='cell', \
           units='km/s',display_name=r'$\delta v_y$',force_override=True)
-        ds.add_field(("gas","dvelocity_magnitude"),function=_dvelocity_mag, \
+        ds.add_field(("gas","dvelocity_magnitude"),function=_dvelocity_mag,sampling_type='cell', \
           units='km/s',display_name=r'$v$',force_override=True)
-        ds.add_field(("gas","dkinetic_energy"),function=_dkinetic_energy, \
+        ds.add_field(("gas","dkinetic_energy"),function=_dkinetic_energy,sampling_type='cell', \
           units='erg/cm**3',display_name=r'$E_k$',force_override=True)
     if mhd:
-        ds.add_field(("gas","mag_pok"),function=_mag_pok, \
+        ds.add_field(("gas","mag_pok"),function=_mag_pok,sampling_type='cell', \
           units='K*cm**(-3)',display_name=r'$P_{\rm mag}/k_{\rm B}$')
+        ds.add_field(("gas","total_magnetic_energy"), function=_total_magnetic_energy, \
+          sampling_type='cell', \
+          units='erg', display_name=r'$E_{\rm mag}$',force_override=True)
+
     scal_fields=get_scalars(ds)
     if len(scal_fields)>0:
-        ds.add_field(("gas","metal0"),function=_metal, \
+        ds.add_field(("gas","metallicity"),function=_metallicity,sampling_type='cell', \
+          units='dimensionless',display_name=r'$Z$')
+        ds.add_field(("gas","metal0"),function=_metal,sampling_type='cell', \
           units='g*cm**(-3)',display_name=r'$\rho_{\rm metal}$')
     if len(scal_fields)>1:
-        ds.add_field(("gas","metal1"),function=_metal_cl, \
+        ds.add_field(("gas","metal1"),function=_metal_cl,sampling_type='cell', \
           units='g*cm**(-3)',display_name=r'$\rho_{\rm metal,cl}$')
     if len(scal_fields)>2:
-        ds.add_field(("gas","metal2"),function=_metal_run, \
+        ds.add_field(("gas","metal2"),function=_metal_run,sampling_type='cell', \
           units='g*cm**(-3)',display_name=r'$\rho_{\rm metal,run}$')
 
-def set_aux(model='solar',verbose=False):
-    aux={}
-    aux['density']=dict(label=r'$n_H\;[{\rm cm}^{-3}]$', \
-        unit='cm**(-3)', limits=(1.e-6,1.e6), \
-        cmap=plt.cm.Spectral_r,clim=(2.e-5,2.e2), \
-        cticks=(1.e-4,1.e-2,1,1.e2), \
-        n_bins=128, log=True)
-    aux['nH']=dict(label=r'$n_H\;[{\rm cm}^{-3}]$', \
-        unit='cm**(-3)', limits=(1.e-6,1.e6), \
-        cmap=plt.cm.Spectral_r,clim=(2.e-5,2.e2), \
-        cticks=(1.e-4,1.e-2,1,1.e2), \
-        n_bins=128, log=True)
-    aux['pok']=dict(label=r'$P/k_B\;[{\rm K}\,{\rm cm}^{-3}]$', \
-        unit='K*cm**(-3)', limits=(1.e-2,1.e8), \
-        cmap=plt.cm.gnuplot2,clim=(10,5.e5), \
-        cticks=(1.e2,1.e3,1.e4,1.e5), \
-        n_bins=128, log=True)
-    aux['temperature']=dict(label=r'$T\;[{\rm K}]$', \
-        unit='K', limits=(1.e0,1.e9), \
-        cmap=shiftedColorMap(plt.cm.RdYlBu_r,midpoint=3/7.), \
-        clim=(10,1.e8), \
-        cticks=(1.e2,1.e4,1.e6,1.e8), \
-        n_bins=128, log=True)
-    aux['surface_density']=dict( \
-        label=r'$\Sigma\;[{\rm M}_{\odot} {\rm pc}^{-2}]$', \
-        cmap=plt.cm.pink_r,clim=(0.1,100),log=True)
-    aux['dvelocity_magnitude']=dict(label=r'$v\;[{\rm km/s}]$', \
-        unit='km/s', limits=(0.1,1.e4), \
-        cmap=plt.cm.jet,clim=(1,1000), \
-        n_bins=128, log=True)
-    aux['velocity_z']=dict(label=r'$v_z\;[{\rm km/s}]$', \
-        unit='km/s', limits=(-1500,1500), \
-        cmap=plt.cm.RdBu_r,clim=(-200,200), \
-        cticks=(-100,0,100), \
-        n_bins=256, log=False)
-    aux['magnetic_field_strength']=dict(label=r'$B\;[\mu{\rm G}]$', \
-        unit='uG', \
-        cmap=plt.cm.viridis,clim=(0.01,10),factor=1, \
-        n_bins=128, log=True)
-    aux['mag_pok']=dict(label=r'$P_{\rm mag}/k_B\;[{\rm K}{\rm cm}^{-3}]$',\
-        unit='K*cm**(-3)', limits=(1.e-2,1.e8), \
-        cmap=plt.cm.gnuplot2,clim=(10,5.e5), \
-        n_bins=128, log=True)
-    aux['ram_pok_z']=dict(\
-        label=r'$P_{\rm turb}/k_B\;[{\rm K}{\rm cm}^{-3}]$', \
-        unit='K*cm**(-3)', limits=(1.e-2,1.e8), \
-        cmap=plt.cm.gnuplot2,clim=(10,5.e5), \
-        n_bins=128, log=True)
-    aux['plasma_beta']=dict(label=r'$\beta$', limits=(1.e-4,1.e16), \
-        n_bins=256, log=True)
-    aux['star_particles']=dict(label=r'${\rm age [Myr]}$', \
-        unit='Myr', limits=(0,40), \
-        cmap=plt.cm.cool_r,clim=(0,40), \
-        cticks=(0,20,40), \
-        n_bins=256, log=False)
-    aux['specific_scalar[0]']=dict(label=r'$Z$', limits=(0,2), \
-        n_bins=256, log=False)
-    aux['specific_scalar[1]']=dict(label=r'$Z_{\rm cl}$', limits=(0,2), \
-        n_bins=256, log=False)
-    aux['specific_scalar[2]']=dict(label=r'$Z_{\rm run}$', limits=(0,2), \
-        n_bins=256, log=False)
-    aux['specific_scalar[3]']=dict(label=r'$Z_{\rm Ia}$', limits=(0,2), \
-        n_bins=256, log=False)
-    aux['specific_scalar[4]']=dict(label=r'$C_{\rm ICM}$', limits=(0,2), \
-        n_bins=256, log=False)
+def ytload(filename):
+    
+    unit_base={"length_unit": (1.0,"pc"), 
+               "time_unit": (1.0,"s*pc/km"), 
+               "mass_unit": (2.38858753789e-24,"g/cm**3*pc**3"), 
+               "velocity_unit": (1.0,"km/s"),
+               "magnetic_unit": (5.4786746797e-07,"gauss")}
 
-    if model.startswith('R4'):
-        if verbose: print('auxilary information is set for R4')
-        aux['nH']['clim']=(2.e-4,2.e3)
-        aux['nH']['cticks']=(1.e-2,1,1.e2)
-        aux['pok']['clim']=(10,5.e6)
-        aux['pok']['cticks']=(1.e2,1.e4,1.e6)
-        aux['surface_density']['clim']=(1,1000)
-        aux['velocity_z']['clim']=(-300,300)
-        aux['velocity_z']['cticks']=(-200,0,200)
-        aux['magnetic_field_strength']['clim']=(0.01,100)
-
-
-    elif model.startswith('R2'):
-        if verbose: print('auxilary information is set for R2')
-        aux['nH']['clim']=(2.e-4,2.e3)
-        aux['nH']['cticks']=(1.e-2,1,1.e2)
-        aux['pok']['clim']=(10,5.e6)
-        aux['pok']['cticks']=(1.e2,1.e4,1.e6)
-        aux['velocity_z']['clim']=(-300,300)
-        aux['velocity_z']['cticks']=(-200,0,200)
-        aux['surface_density']['clim']=(1,1000)
-        aux['magnetic_field_strength']['clim']=(0.01,100)
-
-    elif model is 'multi_SN':
-        aux['nH']['clim']=(2.e-5,2.e2)
-        aux['pok']['clim']=(50,1.e5)
-    else:
-        if verbose: print('auxilary information is set for Solar nbhd.')
-    return aux
-
-def check_aux(fields):
-    aux=set_aux()
-    for f in fields:
-        if f not in aux:
-            print("auxiliary information for %s is missing",f)
-            print(aux[f])
+    tigress_unit_system=yt.UnitSystem('tigress','pc','Msun','Myr',)
+    tigress_unit_system['velocity']='km/s'
+    tigress_unit_system['magnetic_field']='uG'
+    ds=yt.load(filename,units_override=unit_base,unit_system=tigress_unit_system)
+    add_yt_fields(ds,cooling=True,mhd=True,rotation=False)
+    
+    return ds
