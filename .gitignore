@@ -1,4 +1,5 @@
 *.pyc
+.tmp.drivedownload
 notebook/.ipynb_checkpoints/
 notebook/working
 pyathena/build
